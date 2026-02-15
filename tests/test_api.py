@@ -42,6 +42,22 @@ def test_large_upload_rejected() -> None:
     assert response.status_code == 413
 
 
+
+def test_submit_form_with_pdf_url_roundtrip(monkeypatch) -> None:
+    class DummyResponse:
+        status_code = 200
+        headers = {"content-type": "application/pdf"}
+        content = b"Example 2\nSMILES: CCN\nIC50 = 12 nM"
+
+    async def mock_get(self, url):
+        return DummyResponse()
+
+    monkeypatch.setattr("httpx.AsyncClient.get", mock_get)
+
+    response = client.post("/submit", data={"pdf_url": "https://example.com/form.pdf"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+
 def test_submit_url_roundtrip(monkeypatch) -> None:
     class DummyResponse:
         status_code = 200
@@ -71,7 +87,7 @@ def test_frontend_page_loads() -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "Patent PDF" in response.text
-    assert "Submit by URL" in response.text
+    assert "paste a public PDF URL" in response.text
 
 
 def test_vercel_db_path(monkeypatch) -> None:
@@ -93,3 +109,8 @@ def test_vercel_rewrite_targets_api() -> None:
 
     cfg = json.loads(Path("vercel.json").read_text())
     assert cfg["rewrites"][0]["destination"] == "/api"
+
+
+def test_submit_requires_file_or_url() -> None:
+    response = client.post("/submit")
+    assert response.status_code == 400

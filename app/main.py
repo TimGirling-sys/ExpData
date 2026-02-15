@@ -3,7 +3,7 @@ import json
 import uuid
 
 import httpx
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 from app.database import get_conn, init_db
@@ -109,31 +109,7 @@ def _process_text_payload(filename: str, text: str) -> JobResponse:
     return JobResponse(job_id=job_id, status="completed", message="Extraction completed")
 
 
-@app.post("/submit", response_model=JobResponse)
-async def submit(file: UploadFile = File(...)) -> JobResponse:
-    filename = file.filename or "uploaded.pdf"
-    if not filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF input is supported.")
-
-    payload = await file.read()
-    if not payload:
-        raise HTTPException(status_code=400, detail="Uploaded PDF is empty.")
-    if len(payload) > MAX_DIRECT_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=(
-                "PDF too large for direct upload on serverless runtime. "
-                "Use 'Submit by URL' in the UI or /submit-url endpoint."
-            ),
-        )
-
-    text = payload.decode("utf-8", errors="ignore")
-    return _process_text_payload(filename=filename, text=text)
-
-
-@app.post("/submit-url", response_model=JobResponse)
-async def submit_url(request: SubmitUrlRequest) -> JobResponse:
-    url = str(request.pdf_url)
+async def _fetch_pdf_from_url(url: str) -> tuple[str, str]:
     if not url.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="URL must point to a PDF file.")
 
@@ -156,6 +132,42 @@ async def submit_url(request: SubmitUrlRequest) -> JobResponse:
 
     text = payload.decode("utf-8", errors="ignore")
     filename = url.split("/")[-1] or "remote.pdf"
+    return filename, text
+
+
+@app.post("/submit", response_model=JobResponse)
+async def submit(file: UploadFile | None = File(default=None), pdf_url: str | None = Form(default=None)) -> JobResponse:
+    # Prefer URL path when provided so users can bypass direct upload limits in one endpoint.
+    if pdf_url and pdf_url.strip():
+        filename, text = await _fetch_pdf_from_url(pdf_url.strip())
+        return _process_text_payload(filename=filename, text=text)
+
+    if file is None:
+        raise HTTPException(status_code=400, detail="Provide either a PDF file upload or pdf_url.")
+
+    filename = file.filename or "uploaded.pdf"
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF input is supported.")
+
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Uploaded PDF is empty.")
+    if len(payload) > MAX_DIRECT_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "PDF too large for direct upload on serverless runtime. "
+                "Use a pdf_url in this same form or /submit-url endpoint."
+            ),
+        )
+
+    text = payload.decode("utf-8", errors="ignore")
+    return _process_text_payload(filename=filename, text=text)
+
+
+@app.post("/submit-url", response_model=JobResponse)
+async def submit_url(request: SubmitUrlRequest) -> JobResponse:
+    filename, text = await _fetch_pdf_from_url(str(request.pdf_url))
     return _process_text_payload(filename=filename, text=text)
 
 

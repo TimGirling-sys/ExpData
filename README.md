@@ -12,14 +12,15 @@ uvicorn app.main:app --reload
 
 ## Use the Front End
 1. Open `http://127.0.0.1:8000`.
-2. **Small PDFs**: upload `.pdf` and click **Run Extraction**.
-3. **Large PDFs on Vercel**: provide a public PDF URL and click **Submit by URL**.
-4. Review extracted records in the table and raw JSON pane.
+2. Choose one input mode in the same form:
+   - **Small PDFs**: upload `.pdf` and click **Run Extraction**.
+   - **Large PDFs on Vercel**: paste a public PDF URL and click **Run Extraction**.
+3. Review extracted records in the table and raw JSON pane.
 
 ## API Endpoints
 - `GET /` - upload UI.
-- `POST /submit` - direct PDF upload (small files only).
-- `POST /submit-url` - fetch PDF from URL server-side (workaround for function payload limits).
+- `POST /submit` - accepts either a direct PDF upload **or** `pdf_url` form field.
+- `POST /submit-url` - JSON URL endpoint (kept for API clients) to fetch PDF server-side.
 - `GET /jobs/{job_id}` - job status.
 - `GET /results/{job_id}` - linked results.
 

@@ -31,16 +31,17 @@ HTML_PAGE = """
   <div class=\"wrap\">
     <div class=\"card\">
       <h1>Patent PDF → SMILES + Experimental Data</h1>
-      <p class=\"muted\">Upload a patent PDF to extract compounds, assay metrics, provenance, and review flags.</p>
+      <p class=\"muted\">Choose one input method: upload a PDF or paste a public PDF URL, then click Run Extraction.</p>
       <div class=\"row\">
         <input id=\"fileInput\" type=\"file\" accept=\"application/pdf,.pdf\" />
-        <button id=\"runBtn\">Run Extraction</button>
       </div>
-      <p class=\"muted\">For large PDFs on Vercel, use a public PDF URL instead of direct upload.</p>
       <div class=\"row\">
         <input id=\"urlInput\" type=\"url\" placeholder=\"https://example.com/patent.pdf\" />
-        <button id=\"urlBtn\">Submit by URL</button>
       </div>
+      <div class=\"row\">
+        <button id=\"runBtn\">Run Extraction</button>
+      </div>
+      <p class=\"muted\">Tip: large PDFs on Vercel should use URL mode.</p>
       <p id=\"status\" class=\"status muted\">No job submitted yet.</p>
       <p id=\"jobId\" class=\"muted\"></p>
     </div>
@@ -59,7 +60,6 @@ HTML_PAGE = """
   <script>
     const fileInput = document.getElementById('fileInput');
     const runBtn = document.getElementById('runBtn');
-    const urlBtn = document.getElementById('urlBtn');
     const urlInput = document.getElementById('urlInput');
     const statusEl = document.getElementById('status');
     const jobIdEl = document.getElementById('jobId');
@@ -133,13 +133,19 @@ HTML_PAGE = """
     }
 
     runBtn.addEventListener('click', async () => {
-      const file = fileInput.files?.[0];
-      if (!file) {
-        statusEl.textContent = 'Please choose a PDF first.';
+      const file = fileInput.files?.[0] || null;
+      const pdfUrl = (urlInput.value || '').trim();
+
+      if (!file && !pdfUrl) {
+        statusEl.textContent = 'Please upload a PDF or paste a PDF URL.';
         return;
       }
-      if (file.size > 4 * 1024 * 1024) {
-        statusEl.textContent = 'File is too large for direct upload on Vercel. Use Submit by URL.';
+      if (file && pdfUrl) {
+        statusEl.textContent = 'Use one input method only (file OR URL).';
+        return;
+      }
+      if (file && file.size > 4 * 1024 * 1024) {
+        statusEl.textContent = 'File is too large for direct upload on Vercel. Use URL mode.';
         return;
       }
 
@@ -150,7 +156,13 @@ HTML_PAGE = """
 
       try {
         const fd = new FormData();
-        fd.append('file', file, file.name);
+        if (file) {
+          fd.append('file', file, file.name);
+        }
+        if (pdfUrl) {
+          fd.append('pdf_url', pdfUrl);
+        }
+
         const submitRes = await fetch('/submit', { method: 'POST', body: fd });
         const submitParsed = await parseApiResponse(submitRes);
         if (!submitParsed.ok) {
@@ -168,43 +180,6 @@ HTML_PAGE = """
         tableWrap.innerHTML = '<span style="color:#991b1b">Request failed.</span>';
       } finally {
         runBtn.disabled = false;
-      }
-    });
-
-    urlBtn.addEventListener('click', async () => {
-      const pdfUrl = (urlInput.value || '').trim();
-      if (!pdfUrl) {
-        statusEl.textContent = 'Please enter a PDF URL.';
-        return;
-      }
-
-      urlBtn.disabled = true;
-      statusEl.textContent = 'Submitting URL job...';
-      rawEl.textContent = '[]';
-      tableWrap.innerHTML = 'Processing...';
-
-      try {
-        const submitRes = await fetch('/submit-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pdf_url: pdfUrl })
-        });
-        const submitParsed = await parseApiResponse(submitRes);
-        if (!submitParsed.ok) {
-          const msg = submitParsed.data?.detail || submitParsed.raw || 'Submit by URL failed';
-          throw new Error(msg);
-        }
-
-        const jobId = submitParsed.data?.job_id;
-        if (!jobId) throw new Error('Submit succeeded but no job_id returned.');
-        jobIdEl.textContent = `Job ID: ${jobId}`;
-        await pollJob(jobId);
-        await fetchResults(jobId);
-      } catch (e) {
-        statusEl.textContent = `Error: ${e.message}`;
-        tableWrap.innerHTML = '<span style="color:#991b1b">Request failed.</span>';
-      } finally {
-        urlBtn.disabled = false;
       }
     });
   </script>
