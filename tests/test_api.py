@@ -65,4 +65,4 @@ def test_vercel_rewrite_targets_api_index() -> None:
     from pathlib import Path
 
     cfg = json.loads(Path("vercel.json").read_text())
-    assert cfg["rewrites"][0]["destination"] == "/api/index"
+    assert cfg["routes"][0]["dest"] == "/api/index.py"
