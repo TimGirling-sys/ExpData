@@ -23,6 +23,11 @@ def home() -> HTMLResponse:
     return HTMLResponse(content=HTML_PAGE)
 
 
+@app.get("/healthz")
+def healthz() -> dict[str, str]:
+    return {"status": "ok"}
+
+
 def _process_text_payload(filename: str, text: str) -> JobResponse:
     job_id = str(uuid.uuid4())
     created = datetime.now(timezone.utc).isoformat()

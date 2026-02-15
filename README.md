@@ -48,3 +48,9 @@ vercel --token "$VERCEL_TOKEN" --prod
 ## Notes
 - Current extraction is MVP regex/rule-based scaffolding for small molecules.
 - Output includes assay mapping, source evidence, confidence, and review queue flags.
+
+
+## Troubleshooting Vercel 404
+- Verify the deployment points to this repository root (contains `vercel.json`, `api/index.py`, `requirements.txt`).
+- Check `https://<your-domain>/healthz` after deploy; expected response is `{"status":"ok"}`.
+- If `/healthz` is 404, this is likely project linkage/build config, not FastAPI routes.
