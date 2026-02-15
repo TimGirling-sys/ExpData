@@ -2,16 +2,20 @@ from datetime import datetime, timezone
 import json
 import uuid
 
+import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 from app.database import get_conn, init_db
-from app.models import JobResponse, JobStatus, ResultRecord
-from app.pipeline import extract_records, serialize_source
 from app.frontend import HTML_PAGE
+from app.models import JobResponse, JobStatus, ResultRecord, SubmitUrlRequest
+from app.pipeline import extract_records, serialize_source
 
 app = FastAPI(title="ExpData Patent Extraction MVP", version="0.1.0")
 init_db()
+
+MAX_DIRECT_UPLOAD_BYTES = 4 * 1024 * 1024  # keep below typical Vercel function payload limits
+MAX_REMOTE_FETCH_BYTES = 25 * 1024 * 1024
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -19,21 +23,7 @@ def home() -> HTMLResponse:
     return HTMLResponse(content=HTML_PAGE)
 
 
-@app.post("/submit", response_model=JobResponse)
-async def submit(file: UploadFile = File(...)) -> JobResponse:
-    filename = file.filename or "uploaded.pdf"
-    if not filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF input is supported.")
-
-    payload = await file.read()
-    if not payload:
-        raise HTTPException(status_code=400, detail="Uploaded PDF is empty.")
-
-    try:
-        text = payload.decode("utf-8", errors="ignore")
-    except Exception as exc:  # pragma: no cover
-        raise HTTPException(status_code=400, detail=f"Unable to decode file: {exc}")
-
+def _process_text_payload(filename: str, text: str) -> JobResponse:
     job_id = str(uuid.uuid4())
     created = datetime.now(timezone.utc).isoformat()
 
@@ -117,6 +107,56 @@ async def submit(file: UploadFile = File(...)) -> JobResponse:
     conn.close()
 
     return JobResponse(job_id=job_id, status="completed", message="Extraction completed")
+
+
+@app.post("/submit", response_model=JobResponse)
+async def submit(file: UploadFile = File(...)) -> JobResponse:
+    filename = file.filename or "uploaded.pdf"
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF input is supported.")
+
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="Uploaded PDF is empty.")
+    if len(payload) > MAX_DIRECT_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "PDF too large for direct upload on serverless runtime. "
+                "Use 'Submit by URL' in the UI or /submit-url endpoint."
+            ),
+        )
+
+    text = payload.decode("utf-8", errors="ignore")
+    return _process_text_payload(filename=filename, text=text)
+
+
+@app.post("/submit-url", response_model=JobResponse)
+async def submit_url(request: SubmitUrlRequest) -> JobResponse:
+    url = str(request.pdf_url)
+    if not url.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="URL must point to a PDF file.")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            response = await client.get(url)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch PDF URL: {exc}")
+
+    if response.status_code >= 400:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch PDF URL: HTTP {response.status_code}")
+
+    content_type = response.headers.get("content-type", "")
+    if "pdf" not in content_type.lower() and not url.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Fetched URL is not a PDF.")
+
+    payload = response.content
+    if len(payload) > MAX_REMOTE_FETCH_BYTES:
+        raise HTTPException(status_code=413, detail="Remote PDF exceeds fetch limit (25MB).")
+
+    text = payload.decode("utf-8", errors="ignore")
+    filename = url.split("/")[-1] or "remote.pdf"
+    return _process_text_payload(filename=filename, text=text)
 
 
 @app.get("/jobs/{job_id}", response_model=JobStatus)

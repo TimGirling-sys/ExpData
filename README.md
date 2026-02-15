@@ -12,13 +12,14 @@ uvicorn app.main:app --reload
 
 ## Use the Front End
 1. Open `http://127.0.0.1:8000`.
-2. Upload a `.pdf` patent file.
-3. Click **Run Extraction**.
+2. **Small PDFs**: upload `.pdf` and click **Run Extraction**.
+3. **Large PDFs on Vercel**: provide a public PDF URL and click **Submit by URL**.
 4. Review extracted records in the table and raw JSON pane.
 
 ## API Endpoints
 - `GET /` - upload UI.
-- `POST /submit` - upload PDF and run extraction.
+- `POST /submit` - direct PDF upload (small files only).
+- `POST /submit-url` - fetch PDF from URL server-side (workaround for function payload limits).
 - `GET /jobs/{job_id}` - job status.
 - `GET /results/{job_id}` - linked results.
 
@@ -36,7 +37,9 @@ If you already have a token:
 vercel --token "$VERCEL_TOKEN" --prod
 ```
 
-### Vercel storage note
+### Vercel limits note
+- Vercel serverless functions have request body limits; large direct PDF uploads can fail with `FUNCTION_PAYLOAD_TOO_LARGE`.
+- This app now returns `413` for oversized direct uploads and supports `POST /submit-url` as a workaround.
 - SQLite is ephemeral on serverless functions.
 - In Vercel runtime, this app writes DB data to `/tmp/expdata.db` for compatibility.
 - For persistent production data, migrate to managed Postgres.

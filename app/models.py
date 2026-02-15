@@ -1,12 +1,16 @@
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 
 
 class JobResponse(BaseModel):
     job_id: str
     status: str
     message: str
+
+
+class SubmitUrlRequest(BaseModel):
+    pdf_url: HttpUrl
 
 
 class ResultRecord(BaseModel):

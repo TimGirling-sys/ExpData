@@ -13,7 +13,8 @@ HTML_PAGE = """
     h1 { margin-top: 0; font-size: 1.4rem; }
     .muted { color: #6b7280; font-size: .95rem; }
     .row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
-    input[type=file] { border: 1px solid #d1d5db; border-radius: 8px; padding: .4rem; background: #fff; }
+    input[type=file], input[type=url] { border: 1px solid #d1d5db; border-radius: 8px; padding: .4rem; background: #fff; }
+    input[type=url] { min-width: 420px; }
     button { border: 0; border-radius: 8px; padding: .55rem .9rem; font-weight: 600; cursor: pointer; background: #2563eb; color: white; }
     button:disabled { opacity: .6; cursor: not-allowed; }
     .status { font-weight: 600; }
@@ -35,6 +36,11 @@ HTML_PAGE = """
         <input id=\"fileInput\" type=\"file\" accept=\"application/pdf,.pdf\" />
         <button id=\"runBtn\">Run Extraction</button>
       </div>
+      <p class=\"muted\">For large PDFs on Vercel, use a public PDF URL instead of direct upload.</p>
+      <div class=\"row\">
+        <input id=\"urlInput\" type=\"url\" placeholder=\"https://example.com/patent.pdf\" />
+        <button id=\"urlBtn\">Submit by URL</button>
+      </div>
       <p id=\"status\" class=\"status muted\">No job submitted yet.</p>
       <p id=\"jobId\" class=\"muted\"></p>
     </div>
@@ -53,6 +59,8 @@ HTML_PAGE = """
   <script>
     const fileInput = document.getElementById('fileInput');
     const runBtn = document.getElementById('runBtn');
+    const urlBtn = document.getElementById('urlBtn');
+    const urlInput = document.getElementById('urlInput');
     const statusEl = document.getElementById('status');
     const jobIdEl = document.getElementById('jobId');
     const rawEl = document.getElementById('raw');
@@ -110,10 +118,28 @@ HTML_PAGE = """
       throw new Error('Timed out waiting for completion');
     }
 
+    async function fetchResults(jobId) {
+      statusEl.textContent = 'Fetching results...';
+      const resultRes = await fetch(`/results/${jobId}`);
+      const resultParsed = await parseApiResponse(resultRes);
+      if (!resultParsed.ok) {
+        const msg = resultParsed.data?.detail || resultParsed.raw || 'Result fetch failed';
+        throw new Error(msg);
+      }
+      const records = Array.isArray(resultParsed.data) ? resultParsed.data : [];
+      rawEl.textContent = JSON.stringify(records, null, 2);
+      renderTable(records);
+      statusEl.textContent = 'Done.';
+    }
+
     runBtn.addEventListener('click', async () => {
       const file = fileInput.files?.[0];
       if (!file) {
         statusEl.textContent = 'Please choose a PDF first.';
+        return;
+      }
+      if (file.size > 4 * 1024 * 1024) {
+        statusEl.textContent = 'File is too large for direct upload on Vercel. Use Submit by URL.';
         return;
       }
 
@@ -125,7 +151,6 @@ HTML_PAGE = """
       try {
         const fd = new FormData();
         fd.append('file', file, file.name);
-
         const submitRes = await fetch('/submit', { method: 'POST', body: fd });
         const submitParsed = await parseApiResponse(submitRes);
         if (!submitParsed.ok) {
@@ -137,24 +162,49 @@ HTML_PAGE = """
         if (!jobId) throw new Error('Submit succeeded but no job_id returned.');
         jobIdEl.textContent = `Job ID: ${jobId}`;
         await pollJob(jobId);
-
-        statusEl.textContent = 'Fetching results...';
-        const resultRes = await fetch(`/results/${jobId}`);
-        const resultParsed = await parseApiResponse(resultRes);
-        if (!resultParsed.ok) {
-          const msg = resultParsed.data?.detail || resultParsed.raw || 'Result fetch failed';
-          throw new Error(msg);
-        }
-
-        const records = Array.isArray(resultParsed.data) ? resultParsed.data : [];
-        rawEl.textContent = JSON.stringify(records, null, 2);
-        renderTable(records);
-        statusEl.textContent = 'Done.';
+        await fetchResults(jobId);
       } catch (e) {
         statusEl.textContent = `Error: ${e.message}`;
         tableWrap.innerHTML = '<span style="color:#991b1b">Request failed.</span>';
       } finally {
         runBtn.disabled = false;
+      }
+    });
+
+    urlBtn.addEventListener('click', async () => {
+      const pdfUrl = (urlInput.value || '').trim();
+      if (!pdfUrl) {
+        statusEl.textContent = 'Please enter a PDF URL.';
+        return;
+      }
+
+      urlBtn.disabled = true;
+      statusEl.textContent = 'Submitting URL job...';
+      rawEl.textContent = '[]';
+      tableWrap.innerHTML = 'Processing...';
+
+      try {
+        const submitRes = await fetch('/submit-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pdf_url: pdfUrl })
+        });
+        const submitParsed = await parseApiResponse(submitRes);
+        if (!submitParsed.ok) {
+          const msg = submitParsed.data?.detail || submitParsed.raw || 'Submit by URL failed';
+          throw new Error(msg);
+        }
+
+        const jobId = submitParsed.data?.job_id;
+        if (!jobId) throw new Error('Submit succeeded but no job_id returned.');
+        jobIdEl.textContent = `Job ID: ${jobId}`;
+        await pollJob(jobId);
+        await fetchResults(jobId);
+      } catch (e) {
+        statusEl.textContent = `Error: ${e.message}`;
+        tableWrap.innerHTML = '<span style="color:#991b1b">Request failed.</span>';
+      } finally {
+        urlBtn.disabled = false;
       }
     });
   </script>
