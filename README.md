@@ -23,7 +23,7 @@ uvicorn app.main:app --reload
 - `GET /results/{job_id}` - linked results.
 
 ## Deploy to Vercel
-This repository includes `vercel.json` + `api/index.py` configured with a root route to `/api/index.py` for FastAPI on Vercel.
+This repository includes `vercel.json` + `api/index.py` configured with a rewrite from `/` to `/api` (served by `api/index.py`) for FastAPI on Vercel.
 
 ```bash
 npm i -g vercel

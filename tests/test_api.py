@@ -60,9 +60,9 @@ def test_vercel_entrypoint_imports_app() -> None:
     assert vercel_app is not None
 
 
-def test_vercel_rewrite_targets_api_index() -> None:
+def test_vercel_rewrite_targets_api() -> None:
     import json
     from pathlib import Path
 
     cfg = json.loads(Path("vercel.json").read_text())
-    assert cfg["routes"][0]["dest"] == "/api/index.py"
+    assert cfg["rewrites"][0]["destination"] == "/api"
