@@ -29,6 +29,8 @@ def healthz() -> dict[str, str]:
 
 
 def _process_text_payload(filename: str, text: str) -> JobResponse:
+    # Ensure schema exists for the current DB path (important if runtime/env changes).
+    init_db()
     job_id = str(uuid.uuid4())
     created = datetime.now(timezone.utc).isoformat()
 
@@ -64,12 +66,20 @@ def _process_text_payload(filename: str, text: str) -> JobResponse:
         if compound_id is None:
             cur.execute(
                 """
-                INSERT INTO compounds (job_id, compound_label, canonical_smiles, inchi_key, confidence_smiles)
+                INSERT OR IGNORE INTO compounds (job_id, compound_label, canonical_smiles, inchi_key, confidence_smiles)
                 VALUES (?, ?, ?, ?, ?)
                 """,
                 (job_id, obs.compound_label, "C", "UNKNOWN", 0.5),
             )
-            compound_id = cur.lastrowid
+            cur.execute(
+                "SELECT id FROM compounds WHERE job_id = ? AND canonical_smiles = ?",
+                (job_id, "C"),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise HTTPException(status_code=500, detail="Processing failed: unable to resolve fallback compound")
+            compound_id = row["id"]
+            compound_ids[key] = compound_id
 
         requires_review = int(obs.confidence_linking < 0.99 or obs.confidence_experimental < 0.99)
         review_reason = "below_99_precision_threshold" if requires_review else None

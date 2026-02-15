@@ -129,3 +129,18 @@ def test_vercel_env_db_path(monkeypatch) -> None:
     db = importlib.import_module("app.database")
     importlib.reload(db)
     assert str(db.DB_PATH) == "/tmp/expdata.db"
+
+
+def test_submit_with_multiple_metrics_without_compounds_does_not_crash() -> None:
+    content = b"IC50 = 12 nM\nEC50 = 44 nM\n"
+    response = client.post(
+        "/submit",
+        files={"file": ("multi.pdf", content, "application/pdf")},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+
+    results = client.get(f"/results/{payload['job_id']}")
+    assert results.status_code == 200
+    assert len(results.json()) >= 2
