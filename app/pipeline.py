@@ -37,9 +37,20 @@ def _fake_inchikey(smiles: str) -> str:
     return hashlib.sha1(smiles.encode()).hexdigest().upper()[:14] + "-DUMMY-D"
 
 
+def _is_noisy_text(text: str) -> bool:
+    if not text:
+        return True
+    printable = sum(1 for c in text if c.isprintable() or c in "\n\t")
+    ratio = printable / max(1, len(text))
+    return ratio < 0.8
+
+
 def extract_records(text: str) -> tuple[list[Compound], list[Observation]]:
     compounds: list[Compound] = []
     observations: list[Observation] = []
+
+    if _is_noisy_text(text):
+        return compounds, observations
 
     smiles_pattern = re.compile(r"SMILES\s*[:=]\s*([A-Za-z0-9@+\-\[\]\(\)=#$\\/]+)")
     label_pattern = re.compile(r"(Example|Compound)\s+([A-Za-z0-9\-]+)", re.IGNORECASE)
@@ -64,7 +75,18 @@ def extract_records(text: str) -> tuple[list[Compound], list[Observation]]:
         # fallback: capture label-only compounds
         for label in labels:
             pseudo_smiles = "C"
-            compounds.append(Compound(label=label, smiles=pseudo_smiles, inchi_key=_fake_inchikey(pseudo_smiles + label), confidence=0.7))
+            compounds.append(
+                Compound(
+                    label=label,
+                    smiles=pseudo_smiles,
+                    inchi_key=_fake_inchikey(pseudo_smiles + label),
+                    confidence=0.7,
+                )
+            )
+
+    # Avoid emitting unlinked assay rows when no compound evidence exists.
+    if not compounds:
+        return compounds, observations
 
     lines = text.splitlines() or [text]
     for i, m in enumerate(metric_pattern.finditer(text)):
@@ -72,9 +94,12 @@ def extract_records(text: str) -> tuple[list[Compound], list[Observation]]:
         value = float(m.group(2))
         unit = m.group(3)
         line_text = next((ln for ln in lines if m.group(0) in ln), m.group(0))
+        if _is_noisy_text(line_text):
+            continue
+
         assay_raw = "enzymatic inhibition assay" if metric in {"IC50", "KI"} else "cell viability assay"
         assay_norm = ASSAY_MAP.get(assay_raw)
-        compound = compounds[min(i, len(compounds) - 1)] if compounds else Compound(None, "C", _fake_inchikey("C"), 0.5)
+        compound = compounds[min(i, len(compounds) - 1)]
 
         observations.append(
             Observation(

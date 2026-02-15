@@ -46,7 +46,7 @@ vercel --token "$VERCEL_TOKEN" --prod
 - For persistent production data, migrate to managed Postgres.
 
 ## Notes
-- Current extraction is MVP regex/rule-based scaffolding for small molecules.
+- Current extraction is MVP regex/rule-based scaffolding for small molecules using text extracted from PDF with `pypdf` (not full OCR yet).
 - Output includes assay mapping, source evidence, confidence, and review queue flags.
 
 

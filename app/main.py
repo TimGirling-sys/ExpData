@@ -10,6 +10,7 @@ from app.database import get_conn, init_db
 from app.frontend import HTML_PAGE
 from app.models import JobResponse, JobStatus, ResultRecord, SubmitUrlRequest
 from app.pipeline import extract_records, serialize_source
+from app.pdf_text import extract_text_from_pdf_bytes
 
 app = FastAPI(title="ExpData Patent Extraction MVP", version="0.1.0")
 init_db()
@@ -145,7 +146,7 @@ async def _fetch_pdf_from_url(url: str) -> tuple[str, str]:
     if len(payload) > MAX_REMOTE_FETCH_BYTES:
         raise HTTPException(status_code=413, detail="Remote PDF exceeds fetch limit (25MB).")
 
-    text = payload.decode("utf-8", errors="ignore")
+    text = extract_text_from_pdf_bytes(payload)
     filename = url.split("/")[-1] or "remote.pdf"
     return filename, text
 
@@ -179,7 +180,7 @@ async def submit(file: UploadFile | None = File(default=None), pdf_url: str | No
             ),
         )
 
-    text = payload.decode("utf-8", errors="ignore")
+    text = extract_text_from_pdf_bytes(payload)
     try:
         return _process_text_payload(filename=filename, text=text)
     except Exception as exc:

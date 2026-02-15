@@ -131,7 +131,7 @@ def test_vercel_env_db_path(monkeypatch) -> None:
     assert str(db.DB_PATH) == "/tmp/expdata.db"
 
 
-def test_submit_with_multiple_metrics_without_compounds_does_not_crash() -> None:
+def test_submit_with_multiple_metrics_without_compounds_returns_no_results() -> None:
     content = b"IC50 = 12 nM\nEC50 = 44 nM\n"
     response = client.post(
         "/submit",
@@ -142,5 +142,16 @@ def test_submit_with_multiple_metrics_without_compounds_does_not_crash() -> None
     assert payload["status"] == "completed"
 
     results = client.get(f"/results/{payload['job_id']}")
-    assert results.status_code == 200
-    assert len(results.json()) >= 2
+    assert results.status_code == 404
+
+
+def test_noisy_binary_like_input_returns_no_results() -> None:
+    content = b"\x00\x01\x02ki=0Rm&\x0e\x168~\x10xM>\x07"
+    response = client.post(
+        "/submit",
+        files={"file": ("noise.pdf", content, "application/pdf")},
+    )
+    assert response.status_code == 200
+    job_id = response.json()["job_id"]
+    results = client.get(f"/results/{job_id}")
+    assert results.status_code == 404
