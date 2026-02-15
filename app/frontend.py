@@ -60,6 +60,15 @@ HTML_PAGE = """
 
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
+    async function parseApiResponse(res) {
+      const text = await res.text();
+      try {
+        return { ok: res.ok, status: res.status, data: JSON.parse(text), raw: text };
+      } catch {
+        return { ok: res.ok, status: res.status, data: null, raw: text };
+      }
+    }
+
     function renderTable(records) {
       if (!records || !records.length) {
         tableWrap.innerHTML = 'No records returned.';
@@ -118,20 +127,28 @@ HTML_PAGE = """
         fd.append('file', file, file.name);
 
         const submitRes = await fetch('/submit', { method: 'POST', body: fd });
-        const submitJson = await submitRes.json();
-        if (!submitRes.ok) throw new Error(submitJson.detail || 'Submit failed');
+        const submitParsed = await parseApiResponse(submitRes);
+        if (!submitParsed.ok) {
+          const msg = submitParsed.data?.detail || submitParsed.raw || 'Submit failed';
+          throw new Error(msg);
+        }
 
-        const jobId = submitJson.job_id;
+        const jobId = submitParsed.data?.job_id;
+        if (!jobId) throw new Error('Submit succeeded but no job_id returned.');
         jobIdEl.textContent = `Job ID: ${jobId}`;
         await pollJob(jobId);
 
         statusEl.textContent = 'Fetching results...';
         const resultRes = await fetch(`/results/${jobId}`);
-        const resultJson = await resultRes.json();
-        if (!resultRes.ok) throw new Error(resultJson.detail || 'Result fetch failed');
+        const resultParsed = await parseApiResponse(resultRes);
+        if (!resultParsed.ok) {
+          const msg = resultParsed.data?.detail || resultParsed.raw || 'Result fetch failed';
+          throw new Error(msg);
+        }
 
-        rawEl.textContent = JSON.stringify(resultJson, null, 2);
-        renderTable(resultJson);
+        const records = Array.isArray(resultParsed.data) ? resultParsed.data : [];
+        rawEl.textContent = JSON.stringify(records, null, 2);
+        renderTable(records);
         statusEl.textContent = 'Done.';
       } catch (e) {
         statusEl.textContent = `Error: ${e.message}`;
