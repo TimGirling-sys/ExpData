@@ -3,18 +3,34 @@ import sqlite3
 from pathlib import Path
 
 
+VOLUME_TMP_DB = Path('/tmp/expdata.db')
+LOCAL_DB = Path('expdata.db')
+
+
+def _running_on_vercel() -> bool:
+    return bool(
+        os.getenv('VERCEL')
+        or os.getenv('VERCEL_ENV')
+        or os.getenv('NOW_REGION')
+    )
+
+
 def _db_path() -> Path:
-    # Vercel's writable filesystem is /tmp only.
-    if os.getenv("VERCEL"):
-        return Path("/tmp/expdata.db")
-    return Path("expdata.db")
+    # Serverless runtimes should use /tmp for writable storage.
+    if _running_on_vercel():
+        return VOLUME_TMP_DB
+    return LOCAL_DB
 
 
 DB_PATH = _db_path()
 
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn = sqlite3.connect(DB_PATH)
+    except sqlite3.OperationalError:
+        # Fallback for read-only deployment filesystems.
+        conn = sqlite3.connect(VOLUME_TMP_DB)
     conn.row_factory = sqlite3.Row
     return conn
 

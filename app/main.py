@@ -145,7 +145,10 @@ async def submit(file: UploadFile | None = File(default=None), pdf_url: str | No
     # Prefer URL path when provided so users can bypass direct upload limits in one endpoint.
     if pdf_url and pdf_url.strip():
         filename, text = await _fetch_pdf_from_url(pdf_url.strip())
-        return _process_text_payload(filename=filename, text=text)
+        try:
+            return _process_text_payload(filename=filename, text=text)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Processing failed: {exc}")
 
     if file is None:
         raise HTTPException(status_code=400, detail="Provide either a PDF file upload or pdf_url.")
@@ -167,13 +170,19 @@ async def submit(file: UploadFile | None = File(default=None), pdf_url: str | No
         )
 
     text = payload.decode("utf-8", errors="ignore")
-    return _process_text_payload(filename=filename, text=text)
+    try:
+        return _process_text_payload(filename=filename, text=text)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Processing failed: {exc}")
 
 
 @app.post("/submit-url", response_model=JobResponse)
 async def submit_url(request: SubmitUrlRequest) -> JobResponse:
     filename, text = await _fetch_pdf_from_url(str(request.pdf_url))
-    return _process_text_payload(filename=filename, text=text)
+    try:
+        return _process_text_payload(filename=filename, text=text)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Processing failed: {exc}")
 
 
 @app.get("/jobs/{job_id}", response_model=JobStatus)

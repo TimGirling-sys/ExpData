@@ -120,3 +120,12 @@ def test_healthz() -> None:
     response = client.get("/healthz")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+def test_vercel_env_db_path(monkeypatch) -> None:
+    monkeypatch.delenv("VERCEL", raising=False)
+    monkeypatch.setenv("VERCEL_ENV", "production")
+    import importlib
+    db = importlib.import_module("app.database")
+    importlib.reload(db)
+    assert str(db.DB_PATH) == "/tmp/expdata.db"
