@@ -108,7 +108,7 @@ def test_vercel_rewrite_targets_api() -> None:
     from pathlib import Path
 
     cfg = json.loads(Path("vercel.json").read_text())
-    assert cfg["rewrites"][0]["destination"] == "/api"
+    assert cfg["rewrites"][0]["destination"] == "/api/index"
 
 
 def test_submit_requires_file_or_url() -> None:
