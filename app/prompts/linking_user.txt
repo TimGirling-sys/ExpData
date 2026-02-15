@@ -1,0 +1,10 @@
+Reference:
+- id: {reference_id}
+- text: {reference_text}
+
+Candidates (JSON array):
+{candidates_json}
+
+Choose the best candidate_id for the reference. Handle ambiguous phrasing such as
+"the title compound", "example above", or indirect mentions.
+Output JSON only.
